@@ -1,6 +1,9 @@
 package com.atex;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -20,9 +23,13 @@ import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
+import org.apache.maven.plugin.logging.Log;
+import org.codehaus.plexus.util.IOUtil;
 
 import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -37,7 +44,8 @@ public class WhatsNewJiraClient {
 
     public String project = "ART";
     public String version = "2.0.0";
-    public ImmutableList<String> fields = ImmutableList.of("summary"); 
+    public ImmutableList<String> fields = ImmutableList.of("summary");
+    public Log log;
 
     public WhatsNewJiraClient(String url, String user, String pass) {
         this.url = url;
@@ -73,6 +81,9 @@ public class WhatsNewJiraClient {
             URIBuilder builder = new URIBuilder(url + "/search");
             builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved')", project, version));
             builder.addParameter("maxResults", "100");
+            if (log != null) {
+                log.debug("SEARCH " + builder.build().toASCIIString());
+            }
             get = new HttpGet(builder.build());           
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
@@ -86,13 +97,28 @@ public class WhatsNewJiraClient {
             final Gson gson = new GsonBuilder().create();
             get.addHeader(scheme.authenticate(creds, get, ctx));
             response = client.execute(get, ctx);
-            SearchResult res = gson.fromJson(new InputStreamReader(response.getEntity().getContent(), "UTF-8"), SearchResult.class);
-            return Lists.transform(res.issues, new Function<SearchResultIssue, String>() {
+            InputStream stream = response.getEntity().getContent();
+            if (log != null) {
+                ByteArrayOutputStream copy = new ByteArrayOutputStream();
+                IOUtil.copy(stream, copy);
+                byte[] bytes = copy.toByteArray();
+                log.debug("SEARCH RESPONSE " + new String(bytes, "UTF-8"));
+                stream = new ByteArrayInputStream(bytes);
+            }
+            SearchResult res = gson.fromJson(new InputStreamReader(stream, "UTF-8"), SearchResult.class);
+            return ImmutableList.copyOf(Iterables.filter(Lists.transform(res.issues, new Function<SearchResultIssue, String>() {
                 public String apply(SearchResultIssue item) {
                     IssueResult details = getIssue(item.key, scheme, creds, ctx, client, gson);
                     return describe(details);
                 }
-            });
+            }), new Predicate<String>() {
+                public boolean apply(String input) {
+                    if (input == null || input.isEmpty()) {
+                        return false;
+                    }
+                    return !input.startsWith("Internal:");
+                }
+            }));
         } catch (ClientProtocolException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -128,11 +154,22 @@ public class WhatsNewJiraClient {
     IssueResult getIssue(String key, BasicScheme scheme, Credentials creds, HttpContext ctx, HttpClient client, Gson gson)
     {
         HttpGet item = new HttpGet(url + "/issue/" + key);
+        if (log != null) {
+            log.debug("ISSUE " + item.getURI().toASCIIString());
+        }
         HttpResponse response = null;
         try {
             item.addHeader(scheme.authenticate(creds, item, ctx));
             response = client.execute(item);
-            return gson.fromJson(new InputStreamReader(response.getEntity().getContent(), "UTF-8"), IssueResult.class);
+            InputStream stream = response.getEntity().getContent();
+            if (log != null) {
+                ByteArrayOutputStream copy = new ByteArrayOutputStream();
+                IOUtil.copy(stream, copy);
+                byte[] bytes = copy.toByteArray();
+                log.debug("ISSUE RESPONSE " + new String(bytes, "UTF-8"));
+                stream = new ByteArrayInputStream(bytes);
+            }
+            return gson.fromJson(new InputStreamReader(stream, "UTF-8"), IssueResult.class);
         } catch (AuthenticationException e) {
             throw new RuntimeException(e);
         } catch (ClientProtocolException e) {

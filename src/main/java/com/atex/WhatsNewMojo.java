@@ -20,17 +20,20 @@ public class WhatsNewMojo
     @Parameter(defaultValue = "${project.build.directory}/generated-resources", property = "outputDir")
     private File outputDirectory;
 
-    @Parameter(defaultValue = "http://support.polopoly.com/jira/rest/api/2.0.alpha1", property = "jira.url")
+    @Parameter(defaultValue = "http://support.polopoly.com/jira", property = "jira.url")
     private String jiraUrl;
 
-    @Parameter(defaultValue = "ART", property = "jira.project")
-    private String project;
-
-    @Parameter(defaultValue = "summary", property = "jira.field")
+    @Parameter(defaultValue = "summary", property = "jira.fields")
     private String fields;
 
-    @Parameter(defaultValue = "jira", property = "jira.id")
+    @Parameter(defaultValue = "jira", property = "jira.server-id")
     private String jiraId;
+
+    @Parameter(defaultValue = "ART", property = "jira.project-key")
+    private String project;
+
+    @Parameter(defaultValue = "${project.version}", property = "jira.project-version")
+    private String version;
 
     @Parameter(defaultValue = "${settings}")
     private Settings settings;
@@ -44,9 +47,22 @@ public class WhatsNewMojo
         if (server == null) {
             throw new MojoExecutionException(String.format("No server '%s' in settings", jiraId));
         }
-        WhatsNewJiraClient client = new WhatsNewJiraClient(jiraUrl, server.getUsername(), server.getPassword());
+        WhatsNewJiraClient client = new WhatsNewJiraClient(jiraUrl + "/rest/api/2.0.alpha1", server.getUsername(), server.getPassword());
+        if (getLog().isDebugEnabled()) {
+            client.log = getLog();
+        }
         client.project = project;
         client.fields = ImmutableList.copyOf(Splitter.on(',').trimResults().omitEmptyStrings().splitToList(fields));
-        System.out.println(client.changes());
+        client.version = stripSnapshot(version);
+        for (String change : client.changes()) {
+            System.out.println(change);
+        }
+    }
+
+    private String stripSnapshot(String version) {
+        if (version.endsWith("-SNAPSHOT")) {
+            return version.substring(0, version.length() - "-SNAPSHOT".length());
+        }
+        return version;
     }
 }
