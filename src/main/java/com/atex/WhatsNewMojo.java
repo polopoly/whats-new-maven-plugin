@@ -14,28 +14,53 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 
 @Mojo(name = "whats-new", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresOnline = true, requiresProject = true, threadSafe = true)
+/**
+ * Generates a 'whatsnew.html' from all Closed and Resolved issues from a jira project. Possibly including attached image resources as screenshots.
+ */
 public class WhatsNewMojo
     extends AbstractMojo
 {
+    /**
+     * The target directory of the generated whats new page, contains the main 'whatsnew.html' and possible
+     * image resources in directory 'whatsnew-img'.
+     */
     @Parameter(defaultValue = "${project.build.directory}/generated-resources", property = "outputDir")
     private File outputDirectory;
 
+    /**
+     * The base url to the jira installation (eg http://support.polopoly.com/jira)
+     */
     @Parameter(defaultValue = "http://support.polopoly.com/jira", property = "jira.url")
     private String jiraUrl;
 
+    /**
+     * The field(s) to use as what changed note (the first non empty is used), comma separated list.
+     */
     @Parameter(defaultValue = "summary", property = "jira.fields")
     private String fields;
 
+    /**
+     * The id of the server in ~/.m2/settings.xml to use for username/password to login to the jira instance.
+     */
     @Parameter(defaultValue = "jira", property = "jira.server-id")
     private String jiraId;
 
+    /**
+     * The jira project key, default 'ART'.
+     */
     @Parameter(defaultValue = "ART", property = "jira.project-key")
     private String project;
 
+    /**
+     * The jira version, default '{project.version}' without possibly '-SNAPSHOT'.
+     */
     @Parameter(defaultValue = "${project.version}", property = "jira.project-version")
     private String version;
 
-    @Parameter(defaultValue = "${settings}")
+    /**
+     * The settings bean, not configurable (Do not touch).
+     */
+    @Parameter(defaultValue = "${settings}", readonly = true)
     private Settings settings;
 
     public void execute() throws MojoExecutionException
