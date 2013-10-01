@@ -1,6 +1,8 @@
 package com.atex;
 
 import java.io.File;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -12,6 +14,8 @@ import org.apache.maven.settings.Settings;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 
 @Mojo(name = "whats-new", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresOnline = true, requiresProject = true, threadSafe = true)
 /**
@@ -28,16 +32,28 @@ public class WhatsNewMojo
     private File outputDirectory;
 
     /**
+     * The template file used to produce the 'whatsnew.html', default ${pojrect.directory}/src/main/whatsnew/whatsnew.html
+     */
+    @Parameter(defaultValue = "${project.basedir}/src/main/whatsnew/whatsnew.html", property = "templateFile")
+    private File templateFile;
+
+    /**
      * The base url to the jira installation (eg http://support.polopoly.com/jira)
      */
     @Parameter(defaultValue = "http://support.polopoly.com/jira", property = "jira.url")
     private String jiraUrl;
 
     /**
-     * The field(s) to use as what changed note (the first non empty is used), comma separated list.
+     * Field(s) to use as what changed note (the first non empty is used), comma separated list.
      */
-    @Parameter(defaultValue = "summary", property = "jira.fields")
+    @Parameter(defaultValue = "customfield_10068,summary", property = "jira.fields")
     private String fields;
+
+    /**
+     * Field(s) to exclude, because sometimes jira does not allow negation in searches...
+     */
+    @Parameter(defaultValue = "customfield_10067=Exclude release note", property = "jira.excludes")
+    private String excludes;
 
     /**
      * The id of the server in ~/.m2/settings.xml to use for username/password to login to the jira instance.
@@ -77,11 +93,24 @@ public class WhatsNewMojo
             client.log = getLog();
         }
         client.project = project;
-        client.fields = ImmutableList.copyOf(Splitter.on(',').trimResults().omitEmptyStrings().splitToList(fields));
+        Splitter splitter = Splitter.on(',').trimResults().omitEmptyStrings();;
+        client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
+        client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
         client.version = stripSnapshot(version);
-        for (String change : client.changes()) {
-            System.out.println(change);
+        new WhatsNewTemplate(outputDirectory, templateFile, client.changes()).write();
+    }
+
+    private Map<String, String> parseExcludes(List<String> excludes) throws MojoExecutionException
+    {
+        Map<String, String> map = Maps.newHashMap();
+        for (String exclude : excludes) {
+            int index = exclude.indexOf('=');
+            if (index == -1) {
+                throw new MojoExecutionException("Illegal exclude pattern: " + exclude);
+            }
+            map.put(exclude.substring(0, index), exclude.substring(index+1));
         }
+        return map;
     }
 
     private String stripSnapshot(String version) {

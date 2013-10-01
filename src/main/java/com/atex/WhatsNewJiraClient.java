@@ -29,10 +29,11 @@ import org.codehaus.plexus.util.IOUtil;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -45,6 +46,7 @@ public class WhatsNewJiraClient {
     public String project = "ART";
     public String version = "2.0.0";
     public ImmutableList<String> fields = ImmutableList.of("summary");
+    public ImmutableMap<String, String> excludes = ImmutableMap.of();
     public Log log;
 
     public WhatsNewJiraClient(String url, String user, String pass) {
@@ -79,7 +81,7 @@ public class WhatsNewJiraClient {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
-            builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved')", project, version));
+            builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved') order by id desc", project, version));
             builder.addParameter("maxResults", "100");
             if (log != null) {
                 log.debug("SEARCH " + builder.build().toASCIIString());
@@ -106,19 +108,22 @@ public class WhatsNewJiraClient {
                 stream = new ByteArrayInputStream(bytes);
             }
             SearchResult res = gson.fromJson(new InputStreamReader(stream, "UTF-8"), SearchResult.class);
-            return ImmutableList.copyOf(Iterables.filter(Lists.transform(res.issues, new Function<SearchResultIssue, String>() {
-                public String apply(SearchResultIssue item) {
-                    IssueResult details = getIssue(item.key, scheme, creds, ctx, client, gson);
-                    return describe(details);
+            Iterable<IssueResult> issues = Iterables.transform(res.issues, new Function<SearchResultIssue, IssueResult>() {
+                public IssueResult apply(SearchResultIssue input) {
+                    return getIssue(input.key, scheme, creds, ctx, client, gson);
                 }
-            }), new Predicate<String>() {
-                public boolean apply(String input) {
-                    if (input == null || input.isEmpty()) {
-                        return false;
-                    }
-                    return !input.startsWith("Internal:");
+            });
+            Iterable<IssueResult> included = Iterables.filter(issues, new Predicate<IssueResult>() {
+                public boolean apply(IssueResult input) {
+                    return filter(input);
                 }
-            }));
+            });
+            return ImmutableList.copyOf(Iterables.transform(included,
+                    new Function<IssueResult, String>() {
+                        public String apply(IssueResult input) {
+                            return describe(input);
+                        }
+                    }));
         } catch (ClientProtocolException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -136,6 +141,31 @@ public class WhatsNewJiraClient {
                 }
             }
         }
+    }
+
+    boolean filter(IssueResult input) {
+        for (Map.Entry<String, String> exclude : excludes.entrySet()) {
+            JsonElement element = input.fields.get(exclude.getKey());
+            if (element == null) {
+                continue;
+            }
+            element = element.getAsJsonObject().get("value");
+            if (element == null) {
+                continue;
+            }
+            if (element.isJsonPrimitive() && exclude.getValue().equals(element.getAsJsonPrimitive().getAsString())) {
+                return false;
+            }
+            if (element.isJsonArray()) {
+                JsonArray array = element.getAsJsonArray();
+                for (int i = 0 ; i < array.size() ; i++) {
+                    if (exclude.getValue().equals(array.get(i).getAsJsonPrimitive().getAsString())) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     String describe(IssueResult details) {

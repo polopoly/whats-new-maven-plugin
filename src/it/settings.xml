@@ -20,6 +20,13 @@ under the License.
 -->
 
 <settings>
+  <servers>
+    <server>
+      <id>jira</id>
+      <username>${jirauser}</username>
+      <password>${jirapass}</password>
+    </server>
+  </servers>
   <profiles>
     <profile>
       <id>it-repo</id>
