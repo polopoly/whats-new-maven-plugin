@@ -118,12 +118,11 @@ public class WhatsNewJiraClient {
                     return filter(input);
                 }
             });
-            return ImmutableList.copyOf(Iterables.transform(included,
-                    new Function<IssueResult, String>() {
-                        public String apply(IssueResult input) {
-                            return describe(input);
-                        }
-                    }));
+            return ImmutableList.copyOf(Iterables.transform(included, new Function<IssueResult, String>() {
+                public String apply(IssueResult input) {
+                    return describe(input);
+                }
+            }));
         } catch (ClientProtocolException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
