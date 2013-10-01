@@ -97,7 +97,9 @@ public class WhatsNewMojo
         client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
         client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
         client.version = stripSnapshot(version);
-        new WhatsNewTemplate(outputDirectory, templateFile, client.changes()).write();
+        Map<String, Object> context = Maps.newHashMap();
+        context.put("changes", client.changes());
+        new WhatsNewTemplate(outputDirectory, templateFile, context).write();
     }
 
     private Map<String, String> parseExcludes(List<String> excludes) throws MojoExecutionException

@@ -31,6 +31,7 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -77,11 +78,18 @@ public class WhatsNewJiraClient {
         public String value;
     }
 
-    public List<String> changes() {
+    public static class Change {
+        public String date;
+        public String change;
+        public String getDate() { return date; }
+        public String getChange() { return change; }
+    }
+
+    public List<Change> changes() {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
-            builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved') order by id desc", project, version));
+            builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved') order by resolutiondate desc", project, version));
             builder.addParameter("maxResults", "100");
             if (log != null) {
                 log.debug("SEARCH " + builder.build().toASCIIString());
@@ -118,11 +126,14 @@ public class WhatsNewJiraClient {
                     return filter(input);
                 }
             });
-            return ImmutableList.copyOf(Iterables.transform(included, new Function<IssueResult, String>() {
-                public String apply(IssueResult input) {
-                    return describe(input);
-                }
-            }));
+            List<Change> result = Lists.newArrayList();
+            for (IssueResult ir : included) {
+                Change change = new Change();
+                change.date = dateOf(ir);
+                change.change = describe(ir);
+                result.add(change);
+            }
+            return ImmutableList.copyOf(result);
         } catch (ClientProtocolException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -140,6 +151,23 @@ public class WhatsNewJiraClient {
                 }
             }
         }
+    }
+
+    private String dateOf(IssueResult input) {
+        JsonElement el = input.fields.get("resolutiondate");
+        if (el == null) {
+            return null;
+        }
+        el = el.getAsJsonObject().get("value");
+        if (el == null) {
+            return null;
+        }
+        String date = el.getAsString();
+        int index = date.indexOf('T');
+        if (index == -1) {
+            return date;
+        }
+        return date.substring(0, index);
     }
 
     boolean filter(IssueResult input) {

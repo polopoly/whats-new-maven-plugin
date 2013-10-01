@@ -76,9 +76,14 @@
           highlight new functionality and changes in order for them to not go unnoticed.
         </p>
 
+		#set($date = "")
         #foreach($change in $changes)
+          #if( "$!change.date" != "" && $date != $change.date)
+          <h3>$change.date</h3>
+          #set($date = $change.date)
+          #end
           <div class="changeblock">
-            $change
+            $change.change
           </div>
           <div class="clearfix"></div>
         #end

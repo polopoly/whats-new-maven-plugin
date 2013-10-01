@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import org.apache.velocity.Template;
@@ -14,12 +14,12 @@ import org.apache.velocity.app.VelocityEngine;
 public class WhatsNewTemplate {
     private File target;
     private File template;
-    private List<String> changes;
+    private Map<String, Object> context;
 
-    public WhatsNewTemplate(File target, File template, List<String> changes) {
+    public WhatsNewTemplate(File target, File template, Map<String, Object> context) {
         this.target = target;
         this.template = template;
-        this.changes = changes;
+        this.context = context;
     }
 
     public void write() {
@@ -37,8 +37,7 @@ public class WhatsNewTemplate {
         File targetFile = new File(target, "whatsnew.html");
         try {
             FileWriter fw = new FileWriter(targetFile);
-            VelocityContext context = new VelocityContext();
-            context.put("changes", changes);
+            VelocityContext context = new VelocityContext(this.context);
             tmpl.merge(context, fw);
             fw.close();
         } catch (FileNotFoundException e) {
