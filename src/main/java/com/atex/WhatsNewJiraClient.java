@@ -2,6 +2,8 @@ package com.atex;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -13,16 +15,15 @@ import java.util.Map;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.auth.AuthenticationException;
-import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.auth.BasicScheme;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.protocol.BasicHttpContext;
-import org.apache.http.protocol.HttpContext;
 import org.apache.maven.plugin.logging.Log;
 import org.codehaus.plexus.util.IOUtil;
 
@@ -37,23 +38,36 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 
-public class WhatsNewJiraClient {
-
-    private String url;
-    private String user;
-    private String pass;
-
+public class WhatsNewJiraClient
+{
     public String project = "ART";
     public String version = "2.0.0";
     public ImmutableList<String> fields = ImmutableList.of("summary");
     public ImmutableMap<String, String> excludes = ImmutableMap.of();
     public Log log;
 
+    final String url;
+    final String user;
+    final String pass; 
+
+    final CloseableHttpClient client;
+    final UsernamePasswordCredentials creds;
+    final BasicHttpContext ctx;
+    final BasicScheme scheme;
+    final Gson gson;
+
     public WhatsNewJiraClient(String url, String user, String pass) {
-        this.url = url;
+        this.url = url + "/rest/api/2.0.alpha1";
         this.user = user;
         this.pass = pass;
+
+        client = HttpClientBuilder.create().build();
+        creds = new UsernamePasswordCredentials(user, pass);
+        ctx = new BasicHttpContext();
+        scheme = new BasicScheme();
+        gson = new GsonBuilder().create();
     }
 
     public static class SearchResult {
@@ -78,14 +92,7 @@ public class WhatsNewJiraClient {
         public String value;
     }
 
-    public static class Change {
-        public String date;
-        public String change;
-        public String getDate() { return date; }
-        public String getChange() { return change; }
-    }
-
-    public List<Change> changes() {
+    public List<WhatsNewChange> changes() {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
@@ -100,11 +107,6 @@ public class WhatsNewJiraClient {
         }
         HttpResponse response = null;
         try {
-            final HttpClient client = HttpClientBuilder.create().build();
-            final Credentials creds = new UsernamePasswordCredentials(user, pass);
-            final HttpContext ctx = new BasicHttpContext();
-            final BasicScheme scheme = new BasicScheme();
-            final Gson gson = new GsonBuilder().create();
             get.addHeader(scheme.authenticate(creds, get, ctx));
             response = client.execute(get, ctx);
             InputStream stream = response.getEntity().getContent();
@@ -118,7 +120,7 @@ public class WhatsNewJiraClient {
             SearchResult res = gson.fromJson(new InputStreamReader(stream, "UTF-8"), SearchResult.class);
             Iterable<IssueResult> issues = Iterables.transform(res.issues, new Function<SearchResultIssue, IssueResult>() {
                 public IssueResult apply(SearchResultIssue input) {
-                    return getIssue(input.key, scheme, creds, ctx, client, gson);
+                    return getIssue(input.key);
                 }
             });
             Iterable<IssueResult> included = Iterables.filter(issues, new Predicate<IssueResult>() {
@@ -126,11 +128,16 @@ public class WhatsNewJiraClient {
                     return filter(input);
                 }
             });
-            List<Change> result = Lists.newArrayList();
+            List<WhatsNewChange> result = Lists.newArrayList();
             for (IssueResult ir : included) {
-                Change change = new Change();
+                WhatsNewChange change = new WhatsNewChange();
+                change.id = ir.key;
                 change.date = dateOf(ir);
                 change.change = describe(ir);
+                change.previewUrl = previewOf(ir);
+                if (change.previewUrl != null) {
+                    change.preview = change.id + "." + suffix(change.previewUrl);
+                }
                 result.add(change);
             }
             return ImmutableList.copyOf(result);
@@ -151,6 +158,49 @@ public class WhatsNewJiraClient {
                 }
             }
         }
+    }
+
+    private String previewOf(IssueResult input) {
+        JsonElement el = input.fields.get("attachment");
+        if (el == null) {
+            return null;
+        }
+        el = el.getAsJsonObject().get("value");
+        if (el == null) {
+            return null;
+        }
+        if (!el.isJsonArray()) {
+            return null;
+        }
+        JsonArray arr = el.getAsJsonArray();
+        for (int i = 0 ; i < arr.size() ; i++) {
+            JsonObject obj = arr.get(i).getAsJsonObject();
+            JsonPrimitive file = obj.getAsJsonPrimitive("filename");
+            JsonPrimitive mime = obj.getAsJsonPrimitive("mimeType");
+            JsonPrimitive content = obj.getAsJsonPrimitive("content");
+            if (log != null) {
+                log.debug("Attachment " + file + " of type " + mime + " at " + content);
+            }
+            if (file == null || !file.getAsString().matches(".*preview.*")) {
+                log.debug("Not a preview file");
+                continue;
+            }
+            if (mime != null) {
+                if (!mime.getAsString().startsWith("image/")) {
+                    log.debug("MediaType not an image");
+                    continue;
+                }
+            } else {
+                if (!file.getAsString().matches(".*jpg|jpeg|png")) {
+                    log.debug("Filename not an image jpg|jpeg|png");
+                    continue;
+                }
+            }
+            if (content != null) {
+                return content.getAsString();
+            }
+        }
+        return null;
     }
 
     private String dateOf(IssueResult input) {
@@ -208,7 +258,7 @@ public class WhatsNewJiraClient {
         throw new RuntimeException(details.key + " has no notes (tried " + fields + ")");
     }
 
-    IssueResult getIssue(String key, BasicScheme scheme, Credentials creds, HttpContext ctx, HttpClient client, Gson gson)
+    IssueResult getIssue(String key)
     {
         HttpGet item = new HttpGet(url + "/issue/" + key);
         if (log != null) {
@@ -244,6 +294,36 @@ public class WhatsNewJiraClient {
                 }
             }
         }
-        
+    }
+
+    public void downloadImages(Iterable<WhatsNewChange> changes, File outputDirectory)
+    {
+        for (WhatsNewChange change : changes) {
+            if (!outputDirectory.exists()) {
+                outputDirectory.mkdirs();
+            }
+            HttpGet request = new HttpGet(change.previewUrl);
+            try {
+                request.addHeader(scheme.authenticate(creds, request, ctx));
+                CloseableHttpResponse response = client.execute(request);
+                FileOutputStream fos = new FileOutputStream(new File(outputDirectory, change.preview));
+                IOUtil.copy(response.getEntity().getContent(), fos);
+                fos.close();
+            } catch (AuthenticationException e) {
+                throw new RuntimeException(e);
+            } catch (ClientProtocolException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private String suffix(String preview) {
+        int index = preview.lastIndexOf('.');
+        if (index == -1) {
+            return "jpeg";
+        }
+        return preview.substring(index+1);
     }
 }

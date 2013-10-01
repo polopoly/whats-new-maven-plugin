@@ -1,6 +1,10 @@
 package com.atex;
 
+import static com.google.common.collect.Iterables.filter;
+import static com.google.common.collect.Iterables.transform;
+
 import java.io.File;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -12,9 +16,12 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.settings.Server;
 import org.apache.maven.settings.Settings;
 
+import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 @Mojo(name = "whats-new", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresOnline = true, requiresProject = true, threadSafe = true)
@@ -74,6 +81,24 @@ public class WhatsNewMojo
     private String version;
 
     /**
+     * The git directory
+     */
+    @Parameter(defaultValue = "${project.basedir}", property = "git.directory")
+    private File git;
+
+    /**
+     * The git branch
+     */
+    @Parameter(defaultValue = "master", property = "git.branch")
+    private String branch;
+
+    /**
+     * Use git to get correct dates
+     */
+    @Parameter(defaultValue = "true", property = "git.enabled")
+    private boolean gitEnabled;
+
+    /**
      * The settings bean, not configurable (Do not touch).
      */
     @Parameter(defaultValue = "${settings}", readonly = true)
@@ -88,7 +113,7 @@ public class WhatsNewMojo
         if (server == null) {
             throw new MojoExecutionException(String.format("No server '%s' in settings", jiraId));
         }
-        WhatsNewJiraClient client = new WhatsNewJiraClient(jiraUrl + "/rest/api/2.0.alpha1", server.getUsername(), server.getPassword());
+        WhatsNewJiraClient client = new WhatsNewJiraClient(jiraUrl, server.getUsername(), server.getPassword());
         if (getLog().isDebugEnabled()) {
             client.log = getLog();
         }
@@ -97,8 +122,16 @@ public class WhatsNewMojo
         client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
         client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
         client.version = stripSnapshot(version);
+        List<WhatsNewChange> changes = client.changes();
+        client.downloadImages(filter(changes, hasPreview()), new File(outputDirectory, "whatsnew-images"));
+        if (gitEnabled) {
+            WhatsNewGitClient gitClient = new WhatsNewGitClient(git, branch, project);
+            changes = Lists.newArrayList(transform(changes, correctDate(gitClient)));
+            Collections.sort(changes);
+        }
         Map<String, Object> context = Maps.newHashMap();
-        context.put("changes", client.changes());
+        context.put("changes", changes);
+        context.put("imagesDir", "whatsnew-images");
         new WhatsNewTemplate(outputDirectory, templateFile, context).write();
     }
 
@@ -120,5 +153,33 @@ public class WhatsNewMojo
             return version.substring(0, version.length() - "-SNAPSHOT".length());
         }
         return version;
+    }
+
+    public static Function<WhatsNewChange, String> getPreviewUrl() {
+        return new Function<WhatsNewChange, String>() {
+            public String apply(WhatsNewChange input) {
+                return input.preview;
+            }
+        };
+    }
+
+    public static Predicate<WhatsNewChange> hasPreview() {
+        return new Predicate<WhatsNewChange>() {
+            public boolean apply(WhatsNewChange input) {
+                return input.preview != null;
+            }
+        };
+    }
+
+    public static Function<WhatsNewChange, WhatsNewChange> correctDate(final WhatsNewGitClient git) {
+        return new Function<WhatsNewChange, WhatsNewChange>() {
+            public WhatsNewChange apply(WhatsNewChange input) {
+                String gitDate = git.dateOf(input.id);
+                if (gitDate != null) {
+                    input.date = gitDate;
+                }
+                return input;
+            }
+        };
     }
 }

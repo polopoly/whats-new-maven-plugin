@@ -79,8 +79,8 @@
 		#set($date = "")
         #foreach($change in $changes)
           #if( "$!change.date" != "" && $date != $change.date)
-          <h3>$change.date</h3>
-          #set($date = $change.date)
+            <h3>$change.date</h3>
+            #set($date = $change.date)
           #end
           <div class="changeblock">
           #if( "$!change.preview" != "" )
