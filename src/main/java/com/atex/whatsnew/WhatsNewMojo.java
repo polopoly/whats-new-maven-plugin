@@ -1,4 +1,4 @@
-package com.atex;
+package com.atex.whatsnew;
 
 import static com.google.common.collect.Iterables.filter;
 import static com.google.common.collect.Iterables.transform;
@@ -116,7 +116,7 @@ public class WhatsNewMojo
         if (server == null) {
             throw new MojoExecutionException(String.format("No server '%s' in settings", jiraId));
         }
-        WhatsNewJiraClient client = new WhatsNewJiraClient(jiraUrl, server.getUsername(), server.getPassword());
+        JiraClient client = new JiraClient(jiraUrl, server.getUsername(), server.getPassword());
         if (getLog().isDebugEnabled()) {
             client.log = getLog();
         }
@@ -126,12 +126,12 @@ public class WhatsNewMojo
         client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
         client.version = stripSnapshot(version);
         Predicate<String> prefilter = null;
-        WhatsNewGitClient gitClient = null;
+        GitClient gitClient = null;
         if (gitEnabled) {
-            gitClient = new WhatsNewGitClient(git, branch, project);
+            gitClient = new GitClient(git, branch, project);
             prefilter = gitPrefilter(gitClient);
         }
-        List<WhatsNewChange> changes = client.changes(prefilter);
+        List<Change> changes = client.changes(prefilter);
         client.downloadImages(filter(changes, hasPreview()), new File(outputDirectory, "whatsnew-images"));
         if (gitEnabled) {
             changes = Lists.newArrayList(transform(changes, correctDate(gitClient)));
@@ -164,7 +164,7 @@ public class WhatsNewMojo
         return version;
     }
 
-    public static Predicate<String> gitPrefilter(final WhatsNewGitClient git) {
+    public static Predicate<String> gitPrefilter(final GitClient git) {
         return new Predicate<String>() {
             public boolean apply(String input) {
                 return git.hasId(input);
@@ -172,25 +172,25 @@ public class WhatsNewMojo
         };
     }
 
-    public static Function<WhatsNewChange, String> getPreviewUrl() {
-        return new Function<WhatsNewChange, String>() {
-            public String apply(WhatsNewChange input) {
+    public static Function<Change, String> getPreviewUrl() {
+        return new Function<Change, String>() {
+            public String apply(Change input) {
                 return input.preview;
             }
         };
     }
 
-    public static Predicate<WhatsNewChange> hasPreview() {
-        return new Predicate<WhatsNewChange>() {
-            public boolean apply(WhatsNewChange input) {
+    public static Predicate<Change> hasPreview() {
+        return new Predicate<Change>() {
+            public boolean apply(Change input) {
                 return input.preview != null;
             }
         };
     }
 
-    public static Function<WhatsNewChange, WhatsNewChange> correctDate(final WhatsNewGitClient git) {
-        return new Function<WhatsNewChange, WhatsNewChange>() {
-            public WhatsNewChange apply(WhatsNewChange input) {
+    public static Function<Change, Change> correctDate(final GitClient git) {
+        return new Function<Change, Change>() {
+            public Change apply(Change input) {
                 String gitDate = git.dateOf(input.id);
                 if (gitDate != null) {
                     input.date = gitDate;

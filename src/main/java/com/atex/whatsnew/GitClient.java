@@ -1,4 +1,4 @@
-package com.atex;
+package com.atex.whatsnew;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,7 +16,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 
-public class WhatsNewGitClient
+public class GitClient
 {
     final File gitDir;
     final String branch;
@@ -24,7 +24,7 @@ public class WhatsNewGitClient
 
     private Map<String, String> cache;
 
-    public WhatsNewGitClient(File gitDir, String branch, String projectKey) {
+    public GitClient(File gitDir, String branch, String projectKey) {
         this.gitDir = gitDir;
         this.branch = branch;
         this.projectKey = projectKey;

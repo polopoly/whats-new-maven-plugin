@@ -1,6 +1,6 @@
-package com.atex;
+package com.atex.whatsnew;
 
-public class WhatsNewChange implements Comparable<WhatsNewChange>
+public class Change implements Comparable<Change>
 {
     public String id;
     public String date;
@@ -12,7 +12,7 @@ public class WhatsNewChange implements Comparable<WhatsNewChange>
     public String getChange() { return change; }
     public String getPreview() { return preview; }
 
-    public int compareTo(WhatsNewChange o) {
+    public int compareTo(Change o) {
         if (date == null) {
             if (o.date != null) {
                 return -1;

@@ -1,4 +1,4 @@
-package com.atex;
+package com.atex.whatsnew;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -40,7 +40,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
-public class WhatsNewJiraClient
+public class JiraClient
 {
     public String project = "ART";
     public String version = "2.0.0";
@@ -58,7 +58,7 @@ public class WhatsNewJiraClient
     final BasicScheme scheme;
     final Gson gson;
 
-    public WhatsNewJiraClient(String url, String user, String pass) {
+    public JiraClient(String url, String user, String pass) {
         this.url = url + "/rest/api/2.0.alpha1";
         this.user = user;
         this.pass = pass;
@@ -92,7 +92,7 @@ public class WhatsNewJiraClient
         public String value;
     }
 
-    public List<WhatsNewChange> changes(final Predicate<String> prefilter) {
+    public List<Change> changes(final Predicate<String> prefilter) {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
@@ -140,9 +140,9 @@ public class WhatsNewJiraClient
                     return filter(input);
                 }
             });
-            List<WhatsNewChange> result = Lists.newArrayList();
+            List<Change> result = Lists.newArrayList();
             for (IssueResult ir : included) {
-                WhatsNewChange change = new WhatsNewChange();
+                Change change = new Change();
                 change.id = ir.key;
                 change.date = dateOf(ir);
                 change.change = describe(ir);
@@ -308,9 +308,9 @@ public class WhatsNewJiraClient
         }
     }
 
-    public void downloadImages(Iterable<WhatsNewChange> changes, File outputDirectory)
+    public void downloadImages(Iterable<Change> changes, File outputDirectory)
     {
-        for (WhatsNewChange change : changes) {
+        for (Change change : changes) {
             if (!outputDirectory.exists()) {
                 outputDirectory.mkdirs();
             }

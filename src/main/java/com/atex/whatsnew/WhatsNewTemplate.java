@@ -1,4 +1,4 @@
-package com.atex;
+package com.atex.whatsnew;
 
 import java.io.File;
 import java.io.FileNotFoundException;
