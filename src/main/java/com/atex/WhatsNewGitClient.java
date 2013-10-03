@@ -3,7 +3,6 @@ package com.atex;
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,6 +37,13 @@ public class WhatsNewGitClient
         return cache.get(id);
     }
 
+    public boolean hasId(String input) {
+        if (cache == null) {
+            cache = readGit();
+        }
+        return cache.containsKey(input);
+    }
+
     Map<String, String> readGit() {
         try {
             Git git = Git.open(gitDir);
@@ -47,8 +53,10 @@ public class WhatsNewGitClient
             for (RevCommit rc : git.log().add(branchId).setMaxCount(2000).call()) {
                 String msg = rc.getShortMessage();
                 String key = keyOf(msg.trim());
-                if (key != null) {
-                    result.put(key, sf.format(new Date(rc.getCommitTime() * 1000l)));
+                if (key != null && !result.containsKey(key)) {
+                    if (rc.getAuthorIdent() != null && rc.getAuthorIdent().getWhen() != null) {
+                        result.put(key, sf.format(rc.getAuthorIdent().getWhen()));
+                    }
                 }
             }
             return ImmutableMap.copyOf(result);

@@ -92,11 +92,15 @@ public class WhatsNewJiraClient
         public String value;
     }
 
-    public List<WhatsNewChange> changes() {
+    public List<WhatsNewChange> changes(final Predicate<String> prefilter) {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
-            builder.addParameter("jql", String.format("project = '%s' and fixVersion = '%s' and status in ('Closed', 'Resolved') order by resolutiondate desc", project, version));
+            String jql = String.format("project = '%s' and fixVersion = '%s'", project, version);
+            if (prefilter == null) {
+                jql = jql + "and status in ('Closed', 'Resolved')";
+            }
+            builder.addParameter("jql", jql);
             builder.addParameter("maxResults", "100");
             if (log != null) {
                 log.debug("SEARCH " + builder.build().toASCIIString());
@@ -118,7 +122,15 @@ public class WhatsNewJiraClient
                 stream = new ByteArrayInputStream(bytes);
             }
             SearchResult res = gson.fromJson(new InputStreamReader(stream, "UTF-8"), SearchResult.class);
-            Iterable<IssueResult> issues = Iterables.transform(res.issues, new Function<SearchResultIssue, IssueResult>() {
+            Iterable<SearchResultIssue> issueIds = res.issues;
+            if (prefilter != null) {
+                issueIds = Iterables.filter(issueIds, new Predicate<SearchResultIssue>() {
+                    public boolean apply(SearchResultIssue input) {
+                        return prefilter.apply(input.key);
+                    }
+                });
+            }
+            Iterable<IssueResult> issues = Iterables.transform(issueIds, new Function<SearchResultIssue, IssueResult>() {
                 public IssueResult apply(SearchResultIssue input) {
                     return getIssue(input.key);
                 }

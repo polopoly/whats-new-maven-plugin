@@ -93,7 +93,10 @@ public class WhatsNewMojo
     private String branch;
 
     /**
-     * Use git to get correct dates
+     * Use git to get correct dates and determine if a ticket found in jira should
+     * be included or not. If not enabled a ticket must be Closed or Resolved to
+     * be included. If git is enabled the branch will be inspected for tickets and
+     * all tickets that has a corresponding commit will be included.
      */
     @Parameter(defaultValue = "true", property = "git.enabled")
     private boolean gitEnabled;
@@ -122,12 +125,18 @@ public class WhatsNewMojo
         client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
         client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
         client.version = stripSnapshot(version);
-        List<WhatsNewChange> changes = client.changes();
+        Predicate<String> prefilter = null;
+        WhatsNewGitClient gitClient = null;
+        if (gitEnabled) {
+            gitClient = new WhatsNewGitClient(git, branch, project);
+            prefilter = gitPrefilter(gitClient);
+        }
+        List<WhatsNewChange> changes = client.changes(prefilter);
         client.downloadImages(filter(changes, hasPreview()), new File(outputDirectory, "whatsnew-images"));
         if (gitEnabled) {
-            WhatsNewGitClient gitClient = new WhatsNewGitClient(git, branch, project);
             changes = Lists.newArrayList(transform(changes, correctDate(gitClient)));
             Collections.sort(changes);
+            Collections.reverse(changes);
         }
         Map<String, Object> context = Maps.newHashMap();
         context.put("changes", changes);
@@ -153,6 +162,14 @@ public class WhatsNewMojo
             return version.substring(0, version.length() - "-SNAPSHOT".length());
         }
         return version;
+    }
+
+    public static Predicate<String> gitPrefilter(final WhatsNewGitClient git) {
+        return new Predicate<String>() {
+            public boolean apply(String input) {
+                return git.hasId(input);
+            }
+        };
     }
 
     public static Function<WhatsNewChange, String> getPreviewUrl() {

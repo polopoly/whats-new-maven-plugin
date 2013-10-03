@@ -22,6 +22,7 @@
         <configuration>
           <project>GO</project>
           <version>10.4.1</version>
+          <gitEnabled>false</gitEnabled>
           <fields>customfield_10068,summary</fields>
         </configuration>
         <executions>
