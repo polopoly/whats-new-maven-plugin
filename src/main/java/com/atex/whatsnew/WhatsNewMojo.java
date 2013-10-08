@@ -129,6 +129,9 @@ public class WhatsNewMojo
         GitClient gitClient = null;
         if (gitEnabled) {
             gitClient = new GitClient(git, branch, project);
+            if (getLog().isDebugEnabled()) {
+                gitClient.log = getLog();
+            }
             prefilter = gitPrefilter(gitClient);
         }
         List<Change> changes = client.changes(prefilter);
