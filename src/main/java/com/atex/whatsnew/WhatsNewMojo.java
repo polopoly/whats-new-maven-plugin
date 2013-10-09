@@ -116,10 +116,7 @@ public class WhatsNewMojo
         if (server == null) {
             throw new MojoExecutionException(String.format("No server '%s' in settings", jiraId));
         }
-        JiraClient client = new JiraClient(jiraUrl, server.getUsername(), server.getPassword());
-        if (getLog().isDebugEnabled()) {
-            client.log = getLog();
-        }
+        JiraClient client = new JiraClient(jiraUrl, server.getUsername(), server.getPassword(), getLog());
         client.project = project;
         Splitter splitter = Splitter.on(',').trimResults().omitEmptyStrings();;
         client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
@@ -128,10 +125,7 @@ public class WhatsNewMojo
         Predicate<String> prefilter = null;
         GitClient gitClient = null;
         if (gitEnabled) {
-            gitClient = new GitClient(git, branch, project);
-            if (getLog().isDebugEnabled()) {
-                gitClient.log = getLog();
-            }
+            gitClient = new GitClient(git, branch, project, getLog());
             prefilter = gitPrefilter(gitClient);
         }
         List<Change> changes = client.changes(prefilter);

@@ -46,11 +46,11 @@ public class JiraClient
     public String version = "2.0.0";
     public ImmutableList<String> fields = ImmutableList.of("summary");
     public ImmutableMap<String, String> excludes = ImmutableMap.of();
-    public Log log;
 
     final String url;
     final String user;
     final String pass; 
+    final Log log;
 
     final CloseableHttpClient client;
     final UsernamePasswordCredentials creds;
@@ -58,10 +58,11 @@ public class JiraClient
     final BasicScheme scheme;
     final Gson gson;
 
-    public JiraClient(String url, String user, String pass) {
+    public JiraClient(String url, String user, String pass, Log log) {
         this.url = url + "/rest/api/2.0.alpha1";
         this.user = user;
         this.pass = pass;
+        this.log = log;
 
         client = HttpClientBuilder.create().build();
         creds = new UsernamePasswordCredentials(user, pass);
@@ -190,7 +191,7 @@ public class JiraClient
             JsonPrimitive file = obj.getAsJsonPrimitive("filename");
             JsonPrimitive mime = obj.getAsJsonPrimitive("mimeType");
             JsonPrimitive content = obj.getAsJsonPrimitive("content");
-            if (log != null) {
+            if (log.isDebugEnabled()) {
                 log.debug("Attachment " + file + " of type " + mime + " at " + content);
             }
             if (file == null || !file.getAsString().matches(".*preview.*")) {
@@ -273,7 +274,7 @@ public class JiraClient
     IssueResult getIssue(String key)
     {
         HttpGet item = new HttpGet(url + "/issue/" + key);
-        if (log != null) {
+        if (log.isDebugEnabled()) {
             log.debug("ISSUE " + item.getURI().toASCIIString());
         }
         HttpResponse response = null;
@@ -281,7 +282,7 @@ public class JiraClient
             item.addHeader(scheme.authenticate(creds, item, ctx));
             response = client.execute(item);
             InputStream stream = response.getEntity().getContent();
-            if (log != null) {
+            if (log.isDebugEnabled()) {
                 ByteArrayOutputStream copy = new ByteArrayOutputStream();
                 IOUtil.copy(stream, copy);
                 byte[] bytes = copy.toByteArray();

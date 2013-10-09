@@ -19,18 +19,18 @@ import com.google.common.collect.Maps;
 
 public class GitClient
 {
-    public Log log;
-
     final File gitDir;
     final String branch;
     final String projectKey;
+    final Log log;
 
     private Map<String, String> cache;
 
-    public GitClient(File gitDir, String branch, String projectKey) {
+    public GitClient(File gitDir, String branch, String projectKey, Log log) {
         this.gitDir = gitDir;
         this.branch = branch;
         this.projectKey = projectKey;
+        this.log = log;
     }
 
     public String dateOf(String id) {
@@ -90,7 +90,9 @@ public class GitClient
 
     private void log(String format, String... args) {
         if (log != null) {
-            log.debug(String.format(format, (Object[]) args));
+            if (log.isDebugEnabled()) {
+                log.debug(String.format(format, (Object[]) args));
+            }
         }
     }
 }
