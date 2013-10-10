@@ -49,7 +49,7 @@ public class JiraClient
 
     final String url;
     final String user;
-    final String pass; 
+    final String pass;
     final Log log;
 
     final CloseableHttpClient client;
@@ -106,7 +106,7 @@ public class JiraClient
             if (log != null) {
                 log.debug("SEARCH " + builder.build().toASCIIString());
             }
-            get = new HttpGet(builder.build());           
+            get = new HttpGet(builder.build());
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }

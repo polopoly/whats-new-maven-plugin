@@ -12,6 +12,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.revwalk.RevCommit;
 
 import com.google.common.collect.ImmutableMap;
@@ -20,17 +21,32 @@ import com.google.common.collect.Maps;
 public class GitClient
 {
     final File gitDir;
-    final String branch;
     final String projectKey;
     final Log log;
 
     private Map<String, String> cache;
 
-    public GitClient(File gitDir, String branch, String projectKey, Log log) {
+    private ObjectId resolvedHeadObjectId = null;
+    private String resolvedHeadBranchName = null;
+
+    public GitClient(File gitDir, String projectKey, Log log) {
         this.gitDir = gitDir;
-        this.branch = branch;
         this.projectKey = projectKey;
         this.log = log;
+    }
+
+    public ObjectId getResolvedHeadObjectId() {
+        if (resolvedHeadObjectId == null) {
+            cache = readGit();
+        }
+        return resolvedHeadObjectId;
+    }
+
+    public String getResolvedHeadBranchName() {
+        if (resolvedHeadBranchName == null) {
+            cache = readGit();
+        }
+        return resolvedHeadBranchName;
     }
 
     public String dateOf(String id) {
@@ -49,12 +65,21 @@ public class GitClient
 
     Map<String, String> readGit() {
         try {
-            log("Reading branch %s from %s for project %s", branch, gitDir.getAbsolutePath(), projectKey);
+            log("Reading HEAD from %s for project %s", gitDir.getAbsolutePath(), projectKey);
+
             Git git = Git.open(gitDir);
-            ObjectId branchId = git.getRepository().resolve(branch);
+
+            Ref headRef = git.getRepository().getRef("HEAD");
+
+            resolvedHeadObjectId = headRef.getObjectId();
+
+            String headRefName = headRef.getTarget().getName();
+            resolvedHeadBranchName = (headRefName.startsWith("refs/heads/")) ? headRefName.substring("refs/heads/".length()) : headRefName;
+
             SimpleDateFormat sf = new SimpleDateFormat("yyyy-MM-dd");
             Map<String, String> result = Maps.newHashMap();
-            for (RevCommit rc : git.log().add(branchId).setMaxCount(2000).call()) {
+
+            for (RevCommit rc : git.log().add(resolvedHeadObjectId).setMaxCount(2000).call()) {
                 String msg = rc.getShortMessage();
                 String key = keyOf(msg.trim());
                 if (key != null) {

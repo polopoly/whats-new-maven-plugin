@@ -87,12 +87,6 @@ public class WhatsNewMojo
     private File git;
 
     /**
-     * The git branch
-     */
-    @Parameter(defaultValue = "master", property = "git.branch")
-    private String branch;
-
-    /**
      * Use git to get correct dates and determine if a ticket found in jira should
      * be included or not. If not enabled a ticket must be Closed or Resolved to
      * be included. If git is enabled the branch will be inspected for tickets and
@@ -125,7 +119,7 @@ public class WhatsNewMojo
         Predicate<String> prefilter = null;
         GitClient gitClient = null;
         if (gitEnabled) {
-            gitClient = new GitClient(git, branch, project, getLog());
+            gitClient = new GitClient(git, project, getLog());
             prefilter = gitPrefilter(gitClient);
         }
         List<Change> changes = client.changes(prefilter);
@@ -136,8 +130,15 @@ public class WhatsNewMojo
             Collections.reverse(changes);
         }
         Map<String, Object> context = Maps.newHashMap();
+
         context.put("changes", changes);
+
+        context.put("branch", gitClient.getResolvedHeadBranchName());
+        context.put("hash", gitClient.getResolvedHeadObjectId().getName());
+
+        context.put("version", version);
         context.put("imagesDir", "whatsnew-images");
+
         new WhatsNewTemplate(outputDirectory, templateFile, context).write();
     }
 
