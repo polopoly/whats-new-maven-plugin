@@ -144,7 +144,7 @@ public class WhatsNewMojo
             context.put("hash", gitClient.getResolvedHeadObjectId().getName());
         }
 
-        context.put("version", version);
+        context.put("version", stripVersion(version, stripFixVersion));
         context.put("imagesDir", "whatsnew-images");
 
         new WhatsNewTemplate(outputDirectory, templateFile, context).write();
