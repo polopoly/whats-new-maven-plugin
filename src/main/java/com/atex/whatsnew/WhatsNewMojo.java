@@ -75,10 +75,16 @@ public class WhatsNewMojo
     private String project;
 
     /**
-     * The jira version, default '{project.version}' without possibly '-SNAPSHOT'.
+     * The jira version, default '{project.version}' strips '-SNAPSHOT' and possibly fix version (eg 1.0.1-SNAPSHOT becomes 1.0 or 1.0.1 depending on jira.strip-fix-version).
      */
     @Parameter(defaultValue = "${project.version}", property = "jira.project-version")
     private String version;
+
+    /**
+     * Strip the jira version's fix version
+     */
+    @Parameter(defaultValue = "true", property="jira.strip-fix-version")
+    private boolean stripFixVersion;
 
     /**
      * The git directory
@@ -115,7 +121,7 @@ public class WhatsNewMojo
         Splitter splitter = Splitter.on(',').trimResults().omitEmptyStrings();;
         client.fields = ImmutableList.copyOf(splitter.splitToList(fields));
         client.excludes = ImmutableMap.copyOf(parseExcludes(splitter.splitToList(excludes)));
-        client.version = stripSnapshot(version);
+        client.version = stripVersion(version, stripFixVersion);
         Predicate<String> prefilter = null;
         GitClient gitClient = null;
         if (gitEnabled) {
@@ -133,8 +139,10 @@ public class WhatsNewMojo
 
         context.put("changes", changes);
 
-        context.put("branch", gitClient.getResolvedHeadBranchName());
-        context.put("hash", gitClient.getResolvedHeadObjectId().getName());
+        if (gitEnabled) {
+            context.put("branch", gitClient.getResolvedHeadBranchName());
+            context.put("hash", gitClient.getResolvedHeadObjectId().getName());
+        }
 
         context.put("version", version);
         context.put("imagesDir", "whatsnew-images");
@@ -155,9 +163,12 @@ public class WhatsNewMojo
         return map;
     }
 
-    private String stripSnapshot(String version) {
+    static String stripVersion(String version, boolean stripMinor) {
         if (version.endsWith("-SNAPSHOT")) {
-            return version.substring(0, version.length() - "-SNAPSHOT".length());
+            version = version.substring(0, version.length() - "-SNAPSHOT".length());
+        }
+        if (stripMinor && version.matches("\\d+\\.\\d+\\.\\d+")) {
+            version = version.substring(0, version.lastIndexOf('.'));
         }
         return version;
     }

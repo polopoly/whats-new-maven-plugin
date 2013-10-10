@@ -1,5 +1,8 @@
 package com.atex.whatsnew;
 
+import static com.google.common.collect.Iterables.filter;
+import static com.google.common.collect.Iterables.transform;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -28,10 +31,10 @@ import org.apache.maven.plugin.logging.Log;
 import org.codehaus.plexus.util.IOUtil;
 
 import com.google.common.base.Function;
+import com.google.common.base.Joiner;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -94,14 +97,34 @@ public class JiraClient
         public String value;
     }
 
+    public static class ProjectResult {
+        public String key;
+        public String description;
+        public List<ProjectResultComponent> components = new ArrayList<ProjectResultComponent>();
+        public List<ProjectResultVersion> versions = new ArrayList<ProjectResultVersion>();
+    }
+
+    public static class ProjectResultComponent {
+        public String name;
+        public String description;
+    }
+
+    public static class ProjectResultVersion {
+        public String name;
+        public String archived;
+        public String releaseDate;
+    }
+
     public List<Change> changes(final Predicate<String> prefilter) {
         HttpGet get;
         try {
             URIBuilder builder = new URIBuilder(url + "/search");
-            String jql = String.format("project = '%s' and fixVersion = '%s'", project, version);
+            String jql = String.format("project = '%s'", project);
             if (prefilter == null) {
                 jql = jql + "and status in ('Closed', 'Resolved')";
             }
+            List<String> versions = versions(version);
+            jql = jql + String.format(" and fixVersion in (%s)", Joiner.on(",").join(transform(versions, quote())));
             builder.addParameter("jql", jql);
             builder.addParameter("maxResults", "100");
             if (log != null) {
@@ -129,20 +152,20 @@ public class JiraClient
             SearchResult res = gson.fromJson(new InputStreamReader(stream, "UTF-8"), SearchResult.class);
             Iterable<SearchResultIssue> issueIds = res.issues;
             if (prefilter != null) {
-                issueIds = Iterables.filter(issueIds, new Predicate<SearchResultIssue>() {
+                issueIds = filter(issueIds, new Predicate<SearchResultIssue>() {
                     public boolean apply(SearchResultIssue input) {
                         return prefilter.apply(input.key);
                     }
                 });
             }
-            Iterable<IssueResult> issues = Iterables.transform(issueIds, new Function<SearchResultIssue, IssueResult>() {
+            Iterable<IssueResult> issues = transform(issueIds, new Function<SearchResultIssue, IssueResult>() {
                 public IssueResult apply(SearchResultIssue input) {
                     return getIssue(input.key);
                 }
             });
-            Iterable<IssueResult> included = Iterables.filter(issues, new Predicate<IssueResult>() {
+            Iterable<IssueResult> included = filter(issues, new Predicate<IssueResult>() {
                 public boolean apply(IssueResult input) {
-                    return filter(input);
+                    return filterIssue(input);
                 }
             });
             List<Change> result = Lists.newArrayList();
@@ -175,6 +198,71 @@ public class JiraClient
                 }
             }
         }
+    }
+
+    private List<String> versions(String version) {
+        HttpGet projectGet = new HttpGet(url + "/project/" + project);
+        if (log.isDebugEnabled()) {
+            log.debug("PROJECT " + projectGet.getURI().toASCIIString());
+        }
+        HttpResponse response = null;
+        try {
+            auth(projectGet);
+            response = client.execute(projectGet);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                throw new RuntimeException(response.getStatusLine().getReasonPhrase());
+            }
+            InputStream stream = response.getEntity().getContent();
+            if (log.isDebugEnabled()) {
+                ByteArrayOutputStream copy = new ByteArrayOutputStream();
+                IOUtil.copy(stream, copy);
+                byte[] bytes = copy.toByteArray();
+                log.debug("PROJECT RESPONSE " + new String(bytes, "UTF-8"));
+                stream = new ByteArrayInputStream(bytes);
+            }
+            ProjectResult projectResult = gson.fromJson(new InputStreamReader(stream, "UTF-8"), ProjectResult.class);
+            return ImmutableList.copyOf(filter(transform(projectResult.versions, versionString()), startsWith(version)));
+        } catch (AuthenticationException e) {
+            throw new RuntimeException(e);
+        } catch (ClientProtocolException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (response != null) {
+                try {
+                    response.getEntity().getContent().close();
+                } catch (IllegalStateException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private static Predicate<String> startsWith(final String version) {
+        return new Predicate<String>() {
+            public boolean apply(String input) {
+                return input.startsWith(version);
+            }
+        };
+    }
+
+    private static Function<ProjectResultVersion, String> versionString() {
+        return new Function<JiraClient.ProjectResultVersion, String>() {
+            public String apply(ProjectResultVersion input) {
+                return input.name;
+            }
+        };
+    }
+
+    private static Function<String, String> quote() {
+        return new Function<String, String>() {
+            public String apply(String input) {
+                return String.format("'%s'", input);
+            }  
+        };
     }
 
     private void auth(HttpGet get) throws AuthenticationException {
@@ -244,7 +332,7 @@ public class JiraClient
         return date.substring(0, index);
     }
 
-    boolean filter(IssueResult input) {
+    boolean filterIssue(IssueResult input) {
         for (Map.Entry<String, String> exclude : excludes.entrySet()) {
             JsonElement element = input.fields.get(exclude.getKey());
             if (element == null) {
