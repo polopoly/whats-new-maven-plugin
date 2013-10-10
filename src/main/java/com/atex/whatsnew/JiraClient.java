@@ -46,6 +46,7 @@ public class JiraClient
     public String version = "2.0.0";
     public ImmutableList<String> fields = ImmutableList.of("summary");
     public ImmutableMap<String, String> excludes = ImmutableMap.of();
+    private boolean authed = false;
 
     final String url;
     final String user;
@@ -112,8 +113,11 @@ public class JiraClient
         }
         HttpResponse response = null;
         try {
-            get.addHeader(scheme.authenticate(creds, get, ctx));
+            auth(get);
             response = client.execute(get, ctx);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                throw new RuntimeException(response.getStatusLine().getReasonPhrase());
+            }
             InputStream stream = response.getEntity().getContent();
             if (log != null) {
                 ByteArrayOutputStream copy = new ByteArrayOutputStream();
@@ -170,6 +174,13 @@ public class JiraClient
                     System.err.println(getClass().getName() + ": " + e.getMessage());
                 }
             }
+        }
+    }
+
+    private void auth(HttpGet get) throws AuthenticationException {
+        if (!authed) {
+            get.addHeader(scheme.authenticate(creds, get, ctx));
+            authed = true;
         }
     }
 
@@ -279,8 +290,11 @@ public class JiraClient
         }
         HttpResponse response = null;
         try {
-            item.addHeader(scheme.authenticate(creds, item, ctx));
+            auth(item);
             response = client.execute(item);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                throw new RuntimeException(response.getStatusLine().getReasonPhrase());
+            }
             InputStream stream = response.getEntity().getContent();
             if (log.isDebugEnabled()) {
                 ByteArrayOutputStream copy = new ByteArrayOutputStream();
@@ -317,7 +331,7 @@ public class JiraClient
             }
             HttpGet request = new HttpGet(change.previewUrl);
             try {
-                request.addHeader(scheme.authenticate(creds, request, ctx));
+                auth(request);
                 CloseableHttpResponse response = client.execute(request);
                 FileOutputStream fos = new FileOutputStream(new File(outputDirectory, change.preview));
                 IOUtil.copy(response.getEntity().getContent(), fos);
