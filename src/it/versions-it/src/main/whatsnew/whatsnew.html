@@ -82,7 +82,7 @@
           <h3>$change.date</h3>
           #set($date = $change.date)
           #end
-          <div class="changeblock">
+          <div class="changeblock" title="$change.id">
           #if( "$!change.preview" != "" )
             <img src="$imagesDir/$change.preview" class="floatright">
           #end
